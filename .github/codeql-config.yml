@@ -2,12 +2,13 @@ name: "codeql-config"
 paths:
   - .
 paths-ignore:
-  - node_modules/**
-  - dist/**
-  - build/**
-  - coverage/**
-  - **/*.min.js
-  - **/vendor/**
-  - cypress/**/vulnCodeSnippet.ts
-  - frontend/**/.next/**
-  - frontend/**/out/**
+  - "node_modules/**"
+  - "dist/**"
+  - "build/**"
+  - "coverage/**"
+  - "**/*.min.js"
+  - "**/vendor/**"
+  - "frontend/**/.next/**"
+  - "frontend/**/out/**"
+  - "scripts/**"
+  - "cypress/**"
