@@ -1,12 +1,11 @@
-name: Security CI - SAST (SonarCloud + Semgrep + CodeQL)
+name: Security CI – SAST & SCA (SonarCloud + Semgrep + CodeQL + Trivy)
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
 
 permissions:
-  actions: read
   contents: read
   security-events: write
 
@@ -30,7 +29,7 @@ jobs:
           node-version: '18'
 
       - name: Install dependencies
-        run: npm install  
+        run: npm ci
 
       - name: Run SonarCloud scan
         uses: SonarSource/sonarcloud-github-action@v3
@@ -44,8 +43,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -60,9 +57,7 @@ jobs:
       - name: Run Semgrep (OWASP Top 10) → SARIF
         continue-on-error: true
         run: |
-          semgrep --config p/owasp-top-ten \
-                  --sarif --output semgrep.sarif \
-                  --error --timeout 0
+          semgrep --config p/owasp-top-ten --sarif --output semgrep.sarif --error --timeout 0
 
       - name: Upload SARIF to Code Scanning
         if: always()
@@ -83,12 +78,10 @@ jobs:
     needs: semgrep
     strategy:
       matrix:
-        language: [ 'javascript-typescript' ]
+        language: ['javascript-typescript']
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -101,9 +94,8 @@ jobs:
           languages: ${{ matrix.language }}
           queries: security-and-quality
 
-  
       - name: Install dependencies (optional)
-        run: npm install
+        run: npm ci
         continue-on-error: true
 
       - name: Analyze with CodeQL
@@ -111,17 +103,14 @@ jobs:
         with:
           category: "/language:${{ matrix.language }}"
 
-
-
-            sca-trivy:
+  sca-trivy:
     name: SCA – Trivy (deps)
     runs-on: ubuntu-latest
-    needs: codeql  # запускать после предыдущих SAST
+    needs: codeql
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-  
       - name: Cache Trivy DB
         uses: actions/cache@v4
         with:
@@ -130,18 +119,17 @@ jobs:
           restore-keys: |
             trivy-db-${{ runner.os }}-
 
-
       - name: Trivy FS (dependencies)
         uses: aquasecurity/trivy-action@0.28.0
         with:
-          scan-type: 'fs'       
-          scanners: 'vuln'               
-          vuln-type: 'library'          
-          ignore-unfixed: true            
-          exit-code: '0'                  
-          severity: 'CRITICAL,HIGH,MEDIUM,LOW'
-          format: 'sarif'
-          output: 'trivy-deps.sarif'
+          scan-type: fs
+          scanners: vuln
+          vuln-type: library
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH,MEDIUM,LOW
+          exit-code: '0'
+          format: sarif
+          output: trivy-deps.sarif
 
       - name: Upload SARIF to Code Scanning
         uses: github/codeql-action/upload-sarif@v3
@@ -153,4 +141,3 @@ jobs:
         with:
           name: trivy-deps-report
           path: trivy-deps.sarif
-
