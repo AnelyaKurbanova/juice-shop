@@ -1,4 +1,4 @@
-name: Security CI (SAST: SonarCloud + Semgrep)
+name: "Security CI - SAST (SonarCloud + Semgrep)"
 
 on:
   push:
