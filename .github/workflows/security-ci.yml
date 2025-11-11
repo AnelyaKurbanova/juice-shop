@@ -1,4 +1,4 @@
-name: Security CI - SAST & SCA
+name: Security CI – SAST & SCA
 
 on:
   push:
@@ -10,44 +10,37 @@ permissions:
   security-events: write
 
 jobs:
-
   sonar:
-    name: SAST #1 SonarCloud
+    name: SAST — SonarCloud
     runs-on: ubuntu-latest
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_ORG: ${{ secrets.SONAR_ORG }}
+      SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js
+      - name: Setup Node.js (22.12)
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '22.12.0'
 
-      - name: Install deps (ci if lockfile, else install)
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install --no-audit --no-fund
-          fi
+      - name: Install dependencies
+        run: npm ci
 
       - name: Run SonarCloud scan
         uses: SonarSource/sonarcloud-github-action@v3
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_ORG: ${{ secrets.SONAR_ORG }}
-          SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
 
   semgrep:
-    name: SAST #2 Semgrep
+    name: SAST — Semgrep
     runs-on: ubuntu-latest
-    needs: sonar
-    if: always()      
+    if: always()
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -59,14 +52,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install --upgrade semgrep
 
-      - name: Run Semgrep (OWASP Top 10) -> SARIF
+      - name: Run Semgrep (OWASP Top 10) → SARIF
         continue-on-error: true
         run: |
-          semgrep --config p/owasp-top-ten \
-                  --sarif --output semgrep.sarif \
-                  --error --timeout 0
+          semgrep --config p/owasp-top-ten --sarif --output semgrep.sarif --error --timeout 0
 
-      - name: Upload SARIF (Semgrep) to Code Scanning
+      - name: Upload SARIF (Semgrep)
         if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
@@ -79,72 +70,66 @@ jobs:
           name: semgrep-report
           path: semgrep.sarif
 
+ 
   codeql:
-    name: SAST #3 CodeQL
+    name: SAST — CodeQL (javascript-typescript)
     runs-on: ubuntu-latest
-    needs: semgrep
     if: always()
-    strategy:
-      matrix:
-        language: ['javascript-typescript']
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js (22.12)
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22.12.0'
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
-          languages: ${{ matrix.language }}
+          languages: javascript-typescript
           queries: security-and-quality
+          config-file: .github/codeql-config.yml
 
-      - name: Install deps (best-effort)
+      - name: Autobuild (best effort)
+        continue-on-error: true
         run: |
-          if [ -f package-lock.json ]; then
-            npm ci || true
-          else
-            npm install --no-audit --no-fund || true
-          fi
+          npm ci || true
+          npm run build || true
 
       - name: Analyze with CodeQL
         uses: github/codeql-action/analyze@v3
         with:
-          category: "/language:${{ matrix.language }}"
+          category: "/language:javascript-typescript"
 
-
-  sca-trivy:
-    name: SCA - Trivy (deps)
+ 
+  trivy-sca:
+    name: SCA — Trivy (dependencies)
     runs-on: ubuntu-latest
-    needs: codeql
     if: always()
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Run Trivy (filesystem, deps only) -> SARIF
-        run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
-          trivy fs \
-            --scanners vuln \
-            --vuln-type library \
-            --format sarif --output trivy-deps.sarif \
-            --ignore-unfixed \
-            --severity CRITICAL,HIGH,MEDIUM,LOW \
-            .
+      - name: Cache Trivy DB
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ runner.os }}-${{ hashFiles('**/package-lock.json', '**/pnpm-lock.yaml', '**/yarn.lock') }}
+          restore-keys: trivy-db-${{ runner.os }}-
 
-      - name: Upload SARIF (Trivy) to Code Scanning
+      - name: Trivy fs (npm/yarn/pnpm) → SARIF
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: fs
+          format: sarif
+          output: trivy-deps.sarif
+          severity: HIGH,CRITICAL
+          vuln-type: library
+          ignore-unfixed: true
+          scanners: vuln
+          security-checks: vuln
+
+      - name: Upload SARIF (Trivy)
         if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-deps.sarif
-
-      - name: Save Trivy artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-deps-report
-          path: trivy-deps.sarif
