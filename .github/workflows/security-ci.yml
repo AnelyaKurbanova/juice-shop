@@ -1,4 +1,4 @@
-name: Security CI – SAST (SonarCloud + Semgrep + CodeQL)
+name: Security CI - SAST (SonarCloud + Semgrep + CodeQL)
 
 on:
   push:
@@ -6,6 +6,7 @@ on:
   pull_request:
 
 permissions:
+  actions: read
   contents: read
   security-events: write
 
@@ -29,7 +30,7 @@ jobs:
           node-version: '18'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install  
 
       - name: Run SonarCloud scan
         uses: SonarSource/sonarcloud-github-action@v3
@@ -43,6 +44,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -57,7 +60,9 @@ jobs:
       - name: Run Semgrep (OWASP Top 10) → SARIF
         continue-on-error: true
         run: |
-          semgrep --config p/owasp-top-ten --sarif --output semgrep.sarif --error --timeout 0
+          semgrep --config p/owasp-top-ten \
+                  --sarif --output semgrep.sarif \
+                  --error --timeout 0
 
       - name: Upload SARIF to Code Scanning
         if: always()
@@ -82,6 +87,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -94,8 +101,9 @@ jobs:
           languages: ${{ matrix.language }}
           queries: security-and-quality
 
+  
       - name: Install dependencies (optional)
-        run: npm ci
+        run: npm install
         continue-on-error: true
 
       - name: Analyze with CodeQL
